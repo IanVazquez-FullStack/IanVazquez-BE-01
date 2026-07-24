@@ -1,242 +1,224 @@
-# Task API
+# Task API with Auth
 
-A CRUD API for a to-do list. Started as **A1** (in-memory, plain Node `http`),
+A CRUD API for a to-do list with Supabase authentication. Started as **A1** (in-memory, plain Node `http`),
 layered into **routes → service → repository** so storage can be swapped
 without touching business logic, then given a real database twice over:
 **SQLite** for local persistence (**W3·A2**), and **Postgres** in Docker for
-a production-shaped setup (**BE-04**).
+a production-shaped setup (**BE-04**). Now secured with **Supabase Auth** (**BE-03**).
 
 ## Architecture
 
 ```
-routes/task-routes.ts   → parses HTTP, calls the service, maps errors to status codes
-services/task-service.ts → validation + business rules, depends only on TaskRepository
-repositories/task-repository.ts → the interface (the contract)
-  ├── in-memory-task-repository.ts   → array in memory (opt-in: STORAGE=memory)
-  ├── sqlite-task-repository.ts      → tasks.db, a single file on disk (the local default)
-  └── postgres-task-repository.ts    → real Postgres table (used when DATABASE_URL is set)
-server.ts → composition root: the ONLY file that picks which repository to use
+src/
+├── config/
+│   ├── db.ts                    → database connection
+│   └── supabase.ts              → Supabase client initialization
+├── middleware/
+│   └── auth-middleware.ts       → JWT verification middleware
+├── models/
+│   └── task.ts                  → task data model
+├── repositories/
+│   ├── task-repository.ts       → repository interface
+│   ├── in-memory-task-repository.ts
+│   ├── sqlite-task-repository.ts
+│   └── postgres-task-repository.ts
+├── routes/
+│   ├── auth-routes.ts           → signup, login, logout endpoints
+│   ├── protected-routes.ts      → public/protected routes with auth
+│   └── task-routes.ts           → CRUD task endpoints
+├── services/
+│   ├── task-service.ts          → business logic
+│   └── errors.ts                → error classes
+├── app.ts                       → Express app setup
+└── server.ts                    → composition root
 ```
 
-`TaskService` and the routes never import `better-sqlite3` or `pg`, and don't
-know a database exists. They only see `TaskRepository`. Swapping storage
-means changing one file (`sqlite-task-repository.ts`) plus one `if` branch in
-`server.ts` — everything else is honestly untouched. That's the whole point
-of this layering: the API is the promise, the database is just where the
-promise gets kept.
+## Authentication Flow
 
-## Run it
+1. **Sign Up**: User sends email/password to `POST /auth/signup` → Supabase creates the user
+2. **Log In**: User sends credentials to `POST /auth/login` → Supabase validates and returns JWT
+3. **Protected Routes**: User includes `Authorization: Bearer <token>` header → Middleware verifies token with Supabase
+4. **Log Out**: User sends token to `POST /auth/logout` → Supabase invalidates the session
 
-**Locally, no Docker (SQLite — the default):**
+## Setup
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and fill in your Supabase credentials:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+- `SUPABASE_URL` - Your Supabase project URL (from Project Settings → API)
+- `SUPABASE_KEY` - Your Supabase anon/public key (from Project Settings → API)
+
+Optional variables:
+- `PORT` - Server port (default: 3000)
+- `DATABASE_URL` - PostgreSQL connection string (for production)
+- `STORAGE` - Set to `memory` for in-memory storage
+- `SQLITE_DB_PATH` - Custom SQLite database path
+
+### Installation
 
 ```bash
 npm install
+```
+
+### Running
+
+```bash
 npm run dev
 ```
 
-No `DATABASE_URL` set → `server.ts` opens (and, on first run, creates)
-`tasks.db` in the project root via `SqliteTaskRepository`. API on
-`http://localhost:3000`, Swagger UI on `http://localhost:3000/docs`.
+Server starts at `http://localhost:3000` and connects to Supabase.
 
-**With Docker (Postgres — BE-04):**
+## API Endpoints
+
+### Auth Endpoints (Public)
+
+| Method | Path              | Description                  | Status Codes |
+|--------|-------------------|------------------------------|--------------|
+| POST   | `/auth/signup`    | Create new user account      | 201, 400     |
+| POST   | `/auth/login`     | Login and get JWT token      | 200, 400, 401|
+
+### Auth Endpoints (Protected)
+
+| Method | Path              | Description                  | Status Codes |
+|--------|-------------------|------------------------------|--------------|
+| POST   | `/auth/logout`    | Invalidate current token     | 204, 401     |
+
+### Public Endpoints
+
+| Method | Path              | Description                  | Status Codes |
+|--------|-------------------|------------------------------|--------------|
+| GET    | `/public/info`    | Public information           | 200          |
+
+### Protected Endpoints (Require Bearer Token)
+
+| Method | Path                  | Description              | Status Codes |
+|--------|-----------------------|--------------------------|--------------|
+| GET    | `/protected/profile`  | Get user profile         | 200, 401     |
+| GET    | `/protected/dashboard`| Get dashboard data       | 200, 401     |
+
+### Task Endpoints (Require Bearer Token)
+
+| Method | Path              | Description                  | Status Codes |
+|--------|-------------------|------------------------------|--------------|
+| GET    | `/tasks`          | List tasks                   | 200          |
+| GET    | `/tasks/:id`      | Get one task                 | 200, 404     |
+| POST   | `/tasks`          | Create a task                | 201, 400     |
+| PUT    | `/tasks/:id`      | Update a task                | 200, 400, 404|
+| DELETE | `/tasks/:id`      | Delete a task                | 204, 404     |
+| GET    | `/stats`          | Task statistics              | 200          |
+| POST   | `/reset`          | Reset to seed tasks          | 200          |
+
+### System Endpoints
+
+| Method | Path              | Description                  | Status Codes |
+|--------|-------------------|------------------------------|--------------|
+| GET    | `/`               | API description              | 200          |
+| GET    | `/api/health`     | Health check                 | 200          |
+| GET    | `/docs`           | Swagger UI                   | 200          |
+
+## Usage Examples
+
+### Sign Up
 
 ```bash
-cp .env.example .env    # only needed if you run the app outside Docker
-docker compose up
-```
-
-That starts Postgres (with a named volume) and the app together, wired via
-`DATABASE_URL`, which is what makes `server.ts` pick `PostgresTaskRepository`
-instead.
-
-## Why SQLite
-
-SQLite was the right fit for the W3·A2 stage because it needs zero setup: no
-server process, no container, no credentials — opening a file that doesn't
-exist yet *is* creating the database. That matches what this stage is
-actually teaching (memory to disk is the change; everything else about the
-API stays put) without Postgres/Docker's extra moving parts. The trade-off is
-concurrency: SQLite is superb for one process talking to one file (this app,
-local dev, small tools) but doesn't scale to many concurrent writers the way
-Postgres does — which is exactly why BE-04 later moves to Postgres for the
-containerized, production-shaped version of this same API.
-
-## Where the database lives
-
-`tasks.db` (plus its `-wal` / `-shm` sidecar files, from WAL mode) sits in the
-project root, next to `package.json`. It's git-ignored — each clone starts
-with no database and gets its own freshly-seeded copy on first run. Override
-the path with `SQLITE_DB_PATH` if you want it elsewhere.
-
-## Endpoints
-
-| Method | Path          | Meaning                    |
-|--------|---------------|-----------------------------|
-| GET    | `/`           | API description             |
-| GET    | `/api/health` | Health check                |
-| GET    | `/tasks`      | List tasks (`?done=&search=&limit=&offset=&sort=title`) |
-| GET    | `/tasks/:id`  | Get one task                |
-| POST   | `/tasks`      | Create a task (`{ "title": "..." }`) |
-| PUT    | `/tasks/:id`  | Update a task (`title` and/or `done`) |
-| DELETE | `/tasks/:id`  | Delete a task               |
-| GET    | `/stats`      | `{ total, done, open }` — computed with SQL `COUNT()`, not in JS |
-| POST   | `/reset`      | Reset to the 3 seed tasks   |
-| GET    | `/docs`       | Swagger UI                  |
-
-Example:
-
-```bash
-curl -i -X POST http://localhost:3000/tasks \
+curl -i -X POST http://localhost:3000/auth/signup \
   -H "Content-Type: application/json" \
-  -d '{"title":"Buy milk"}'
-
-HTTP/1.1 201 Created
-Content-Type: application/json; charset=utf-8
-
-{"id":4,"title":"Buy milk","done":false}
+  -d '{"email":"test@example.com", "password":"password123"}'
 ```
 
-Status codes: `200` reads, `201` create, `204` delete, `400` invalid body, `404` unknown id.
-
-## Storage: honestly, what changed and what didn't
-
-- **Changed:** `server.ts` (picks the repository), added
-  `sqlite-task-repository.ts` and `postgres-task-repository.ts`, added
-  `db/init.sql`, `docker-compose.yml`, `Dockerfile`, `.env.example`.
-- **Did not change:** `task-service.ts` and `task-routes.ts`. Same files,
-  same logic, same validation, whether the app is talking to a JS array, a
-  SQLite file, or a real Postgres table. That's the thing this assignment is
-  actually testing.
-
-## Exploring the database by hand (Stage 4)
-
-Opened `tasks.db` in DB Browser for SQLite after seeding and running a few
-requests. Example query run in its "Execute SQL" tab:
-
-```sql
-SELECT * FROM tasks WHERE done = 1;
-```
-
-Returned exactly the completed tasks (`Ship the API` from the seed, plus
-whatever I'd marked done through the API in that session) — confirming the
-API and DB Browser are reading the same file with no syncing step in between.
-
-*(screenshot of DB Browser here — add `docs/db-browser.png` and embed it as
-`![DB Browser](docs/db-browser.png)`)*
-
-## `.env`
-
-`.env` is gitignored; `.env.example` is committed as the template. It's only
-needed for two cases: pointing `SQLITE_DB_PATH` somewhere non-default, or
-running the Node process directly on your host against the Dockerized
-Postgres (`docker-compose.yml` builds `DATABASE_URL` itself for the `app`
-service).
-
-## Proving persistence (SQLite)
-
-```bash
-curl -s -X POST http://localhost:3000/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title":"prueba persistencia"}'
-# {"id":4,"title":"prueba persistencia","done":false}
-
-# stop the server (Ctrl+C), then start it again:
-npm run dev
-
-curl -s http://localhost:3000/tasks | python3 -m json.tool
-```
-
-Result — the row created before the restart is still there, and the three
-seed tasks were not duplicated:
-
+Response (201 Created):
 ```json
-[
-    {"id": 1, "title": "Buy milk", "done": false},
-    {"id": 2, "title": "Write README", "done": false},
-    {"id": 3, "title": "Ship the API", "done": true},
-    {"id": 4, "title": "prueba persistencia", "done": false}
-]
+{
+  "user": {
+    "id": "uuid-here",
+    "email": "test@example.com",
+    "created_at": "2024-01-01T00:00:00.000Z"
+  }
+}
 ```
 
-## Proving persistence (Postgres / BE-04)
-
-Tested with the exact command the BE-04 assignment asked for — create a row,
-tear down the whole stack, bring it back up, confirm the row survived:
+### Log In
 
 ```bash
-curl -s -X POST http://localhost:3000/tasks \
+curl -i -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"title":"prueba persistencia"}'
-# {"id":7,"title":"prueba persistencia","done":false}
-
-docker compose down
-#  Container ianvazquez-be-01-app-1  Removed
-#  Container ianvazquez-be-01-db-1   Removed
-#  Network ianvazquez-be-01_default  Removed
-
-docker compose up -d
-#  Container ianvazquez-be-01-db-1   Started
-#  Container ianvazquez-be-01-db-1   Healthy
-#  Container ianvazquez-be-01-app-1  Started
-
-sleep 3
-curl -s http://localhost:3000/tasks | python3 -m json.tool
+  -d '{"email":"test@example.com", "password":"password123"}'
 ```
 
-Result — row `id: 7` ("prueba persistencia") is still there after the
-containers and network were fully removed and recreated from scratch:
-
+Response (200 OK):
 ```json
-[
-    {"id": 1, "title": "Buy milk", "done": false},
-    {"id": 2, "title": "Write README", "done": false},
-    {"id": 3, "title": "Ship the API", "done": true},
-    {"id": 7, "title": "prueba persistencia", "done": false}
-]
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "v1 refreshToken..."
+}
 ```
 
-`docker compose down` removes the containers and the network, but the named
-volume (`pgdata`) is untouched — that's what makes the row survive. Only
-`docker compose down -v` would wipe it.
+### Access Protected Route
 
-## Extras included
+```bash
+curl -i http://localhost:3000/protected/profile \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE"
+```
 
-- **Search** — `GET /tasks?search=milk` via SQL `LIKE` (`WHERE LOWER(title) LIKE ?`).
-- **Filter by status** — `GET /tasks?done=true` via `WHERE done = ?`.
-- **Sort alphabetically** — `GET /tasks?sort=title` via `ORDER BY title ASC`
-  (implemented in all three repositories, so the contract stays consistent).
-- **Statistics** — `GET /stats`, computed with SQL `COUNT()` / `SUM(CASE...)`,
-  not counted in application code.
-- **Index** — `CREATE INDEX idx_tasks_title ON tasks(title)`, added because
-  both the search extra (`LIKE` on `title`) and the sort extra (`ORDER BY
-  title`) read that column; an index trades a small write-time cost for
-  faster reads on exactly the queries this app runs most.
-- **Transaction** — seeding the three example tasks (and resetting them via
-  `POST /reset`) runs inside `db.transaction(...)`, so it's all-or-nothing:
-  a crash mid-seed can't leave one or two rows behind with no way to tell the
-  app it still needs to finish seeding.
+Response (200 OK):
+```json
+{
+  "user": {
+    "id": "uuid-here",
+    "email": "test@example.com",
+    "created_at": "2024-01-01T00:00:00.000Z"
+  }
+}
+```
 
-## Extras / stretch not attempted
+### Log Out
 
-- `created_at` / `updated_at` timestamps — would mean changing the `tasks`
-  schema and the shared `Task` model across all three repositories; skipped
-  for this pass rather than done half-way.
-- Redis and the `EXPLAIN ANALYZE` index comparison from BE-04 — still not
-  included, noted here rather than silently skipped.
+```bash
+curl -i -X POST http://localhost:3000/auth/logout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE"
+```
 
-## AI vs me (Stage 6)
+Response (204 No Content)
 
-See [`ai-version/README.md`](ai-version/README.md) for the full prompt, the
-AI-generated version (kept in its own folder, untouched otherwise), the diff
-against the hand-built `sqlite-task-repository.ts` above, and the concrete
-differences found.
+## Swagger UI
 
-## What changed from A1
+Access Swagger UI at `http://localhost:3000/docs` to interact with all endpoints.
 
-- Rewritten in TypeScript with Express (was a single `server.js` using the
-  raw `http` module with two endpoints).
-- Full CRUD on `/tasks` with validation and correct status codes.
-- Swagger UI at `/docs`, spec in `openapi.json`.
-- Layered into routes / service / repository — the layering that made both
-  the SQLite swap (W3·A2) and the Postgres swap (BE-04) possible without
-  touching `task-service.ts` or `task-routes.ts`.
+1. Click the **Authorize** lock icon
+2. Enter your access token (without "Bearer " prefix)
+3. Click **Authorize**
+4. Now you can test protected endpoints directly from the browser
+
+## Security Notes
+
+- **Never commit `.env`** - It's gitignored and contains your Supabase secrets
+- **Use HTTPS in production** - JWTs should only be transmitted over secure connections
+- **Token expiration** - Supabase JWTs expire after 1 hour by default
+- **Refresh tokens** - Use the refresh token to get new access tokens without re-login
+
+## Storage Options
+
+The API supports multiple storage backends:
+
+1. **SQLite** (default) - Local file database, no setup required
+2. **In-memory** - Set `STORAGE=memory` for testing
+3. **PostgreSQL** - Set `DATABASE_URL` for production
+
+## Development
+
+```bash
+npm run dev          # Start with hot-reload
+npm run typecheck    # Check TypeScript types
+npm run build        # Build for production
+npm start            # Run production build
+```
+
+## License
+
+MIT

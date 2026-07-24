@@ -1,15 +1,196 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Task API",
-    "version": "2.0.0",
-    "description": "CRUD API for a to-do list. Storage is swappable: in-memory locally, Postgres when DATABASE_URL is set."
+    "title": "Task API with Auth",
+    "version": "3.0.0",
+    "description": "CRUD API for a to-do list with Supabase authentication. Storage is swappable: in-memory locally, Postgres when DATABASE_URL is set."
   },
   "servers": [{ "url": "/" }],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "paths": {
+    "/auth/signup": {
+      "post": {
+        "summary": "Sign up a new user",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 6 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing or invalid input" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Login and get access token",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": { "type": "string" },
+                    "refresh_token": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing or invalid input" },
+          "401": { "description": "Invalid login credentials" }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Logout and invalidate token",
+        "tags": ["Auth"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": { "description": "Logged out successfully" },
+          "401": { "description": "Invalid or expired token" }
+        }
+      }
+    },
+    "/public/info": {
+      "get": {
+        "summary": "Get public information",
+        "tags": ["Public"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Public info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/protected/profile": {
+      "get": {
+        "summary": "Get user profile (protected)",
+        "tags": ["Protected"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": { "$ref": "#/components/schemas/UserProfile" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Access token required or invalid" }
+        }
+      }
+    },
+    "/protected/dashboard": {
+      "get": {
+        "summary": "Get dashboard data (protected)",
+        "tags": ["Protected"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/UserProfile" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Access token required or invalid" }
+        }
+      }
+    },
     "/tasks": {
       "get": {
         "summary": "List tasks",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           { "name": "done", "in": "query", "schema": { "type": "boolean" } },
           { "name": "search", "in": "query", "schema": { "type": "string" } },
@@ -29,6 +210,12 @@
       },
       "post": {
         "summary": "Create a task",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -53,6 +240,12 @@
     "/tasks/{id}": {
       "get": {
         "summary": "Get a task by id",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
           "200": { "description": "Task found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
@@ -61,6 +254,12 @@
       },
       "put": {
         "summary": "Update a task",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
           "content": {
@@ -83,6 +282,12 @@
       },
       "delete": {
         "summary": "Delete a task",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
           "204": { "description": "Deleted" },
@@ -93,6 +298,12 @@
     "/stats": {
       "get": {
         "summary": "Task counters",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Totals",
@@ -115,6 +326,12 @@
     "/reset": {
       "post": {
         "summary": "Reset to the 3 seed tasks",
+        "tags": ["Tasks"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Tasks after reset",
@@ -126,12 +343,38 @@
     "/api/health": {
       "get": {
         "summary": "Health check",
+        "tags": ["System"],
+        "security": [],
         "responses": { "200": { "description": "Server is alive" } }
       }
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter your Supabase access token (JWT)"
+      }
+    },
     "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
       "Task": {
         "type": "object",
         "properties": {
