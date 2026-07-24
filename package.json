@@ -1,8 +1,8 @@
 {
   "name": "be-01",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
-  "description": "Task CRUD API — in-memory (A1) upgraded to layered architecture (A2) and containerized with Postgres (BE-04).",
+  "description": "Task CRUD API — in-memory (A1) upgraded to layered architecture, then SQLite (W3·A2) and containerized with Postgres (BE-04).",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
@@ -11,12 +11,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "better-sqlite3": "^11.3.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "pg": "^8.12.0",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.9",
     "@types/pg": "^8.11.6",

@@ -30,7 +30,7 @@ export class PostgresTaskRepository implements TaskRepository {
 
     let query = `SELECT id, title, done FROM tasks`;
     if (clauses.length) query += ` WHERE ${clauses.join(" AND ")}`;
-    query += ` ORDER BY id ASC`;
+    query += filters.sort === "title" ? ` ORDER BY title ASC` : ` ORDER BY id ASC`;
 
     if (filters.limit !== undefined) {
       values.push(filters.limit);

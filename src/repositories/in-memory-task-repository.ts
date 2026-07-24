@@ -29,6 +29,9 @@ export class InMemoryTaskRepository implements TaskRepository {
       const q = filters.search.toLowerCase();
       result = result.filter((t) => t.title.toLowerCase().includes(q));
     }
+    if (filters.sort === "title") {
+      result = [...result].sort((a, b) => a.title.localeCompare(b.title));
+    }
     if (filters.offset !== undefined) {
       result = result.slice(filters.offset);
     }

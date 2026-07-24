@@ -1,24 +1,33 @@
 import "dotenv/config";
+import path from "path";
 import { createApp } from "./app";
 import { TaskService } from "./services/task-service";
 import { TaskRepository } from "./repositories/task-repository";
 import { InMemoryTaskRepository } from "./repositories/in-memory-task-repository";
+import { SqliteTaskRepository } from "./repositories/sqlite-task-repository";
 import { PostgresTaskRepository } from "./repositories/postgres-task-repository";
 import { createPool } from "./config/db";
 
 const port = process.env.PORT || 3000;
 const databaseUrl = process.env.DATABASE_URL;
+const storageOverride = process.env.STORAGE;
 
-// This is the ONLY place storage is chosen. Everything downstream
-// (TaskService, the routes, app.ts) only ever sees the TaskRepository
-// interface — proving that swapping storage really does change one file.
-const repository: TaskRepository = databaseUrl
-  ? new PostgresTaskRepository(createPool(databaseUrl))
-  : new InMemoryTaskRepository();
+let repository: TaskRepository;
+let storageName: string;
 
-console.log(
-  `[storage] using ${databaseUrl ? "PostgresTaskRepository" : "InMemoryTaskRepository"}`
-);
+if (databaseUrl) {
+  repository = new PostgresTaskRepository(createPool(databaseUrl));
+  storageName = "PostgresTaskRepository";
+} else if (storageOverride === "memory") {
+  repository = new InMemoryTaskRepository();
+  storageName = "InMemoryTaskRepository";
+} else {
+  const sqlitePath = process.env.SQLITE_DB_PATH || path.join(process.cwd(), "tasks.db");
+  repository = new SqliteTaskRepository(sqlitePath);
+  storageName = `SqliteTaskRepository (${sqlitePath})`;
+}
+
+console.log(`[storage] using ${storageName}`);
 
 const taskService = new TaskService(repository);
 const app = createApp(taskService);

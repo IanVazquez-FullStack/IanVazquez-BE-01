@@ -15,6 +15,12 @@ function parseBoolQuery(raw: unknown): boolean | undefined {
   throw new ValidationError("'done' query param must be 'true' or 'false'");
 }
 
+function parseSortQuery(raw: unknown): "title" | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === "title") return "title";
+  throw new ValidationError("'sort' query param must be 'title'");
+}
+
 export function createTaskRouter(taskService: TaskService): Router {
   const router = Router();
 
@@ -26,6 +32,7 @@ export function createTaskRouter(taskService: TaskService): Router {
         search: typeof search === "string" ? search : undefined,
         limit: limit !== undefined ? Number(limit) : undefined,
         offset: offset !== undefined ? Number(offset) : undefined,
+        sort: parseSortQuery(req.query.sort),
       });
       res.status(200).json(tasks);
     } catch (err) {

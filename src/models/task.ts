@@ -9,6 +9,7 @@ export interface TaskFilters {
   search?: string;
   limit?: number;
   offset?: number;
+  sort?: "title";
 }
 
 export interface UpdateTaskInput {
