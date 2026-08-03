@@ -4,3 +4,4 @@ dist/
 tasks.db
 tasks.db-wal
 tasks.db-shm
+storage/

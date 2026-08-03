@@ -1,4 +1,5 @@
 import { Task, TaskFilters, UpdateTaskInput } from "../models/task";
+import { TaskMetrics } from "../models/report";
 
 /**
  * Storage-agnostic contract. TaskService only ever talks to this interface —
@@ -14,4 +15,6 @@ export interface TaskRepository {
   remove(id: number): Promise<boolean>;
   reset(): Promise<void>;
   stats(): Promise<{ total: number; done: number; open: number }>;
+  /** Aggregated metrics used to render the task report PDF. */
+  reportMetrics(): Promise<TaskMetrics>;
 }

@@ -145,4 +145,35 @@ export class SqliteTaskRepository implements TaskRepository {
     const done = row.done ?? 0;
     return { total, done, open: total - done };
   }
+
+  async reportMetrics(): Promise<{ total: number; completed: number; byStatus: { status: "done" | "open"; count: number }[] }> {
+    const totals = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END) AS completed
+         FROM tasks`
+      )
+      .get() as { total: number; completed: number | null };
+    const total = totals.total;
+    const completed = totals.completed ?? 0;
+
+    const byStatusRows = this.db
+      .prepare(`SELECT done, COUNT(*) AS count FROM tasks GROUP BY done`)
+      .all() as { done: number; count: number }[];
+
+    const counts: Record<string, number> = { done: 0, open: 0 };
+    for (const row of byStatusRows) {
+      counts[row.done === 1 ? "done" : "open"] = row.count;
+    }
+
+    return {
+      total,
+      completed,
+      byStatus: [
+        { status: "done", count: counts.done },
+        { status: "open", count: counts.open },
+      ],
+    };
+  }
 }

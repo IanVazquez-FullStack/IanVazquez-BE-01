@@ -76,4 +76,17 @@ export class InMemoryTaskRepository implements TaskRepository {
     const done = this.tasks.filter((t) => t.done).length;
     return { total, done, open: total - done };
   }
+
+  async reportMetrics(): Promise<{ total: number; completed: number; byStatus: { status: "done" | "open"; count: number }[] }> {
+    const total = this.tasks.length;
+    const completed = this.tasks.filter((t) => t.done).length;
+    return {
+      total,
+      completed,
+      byStatus: [
+        { status: "done", count: completed },
+        { status: "open", count: total - completed },
+      ],
+    };
+  }
 }

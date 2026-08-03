@@ -59,6 +59,7 @@ Optional variables:
 - `DATABASE_URL` - PostgreSQL connection string (for production)
 - `STORAGE` - Set to `memory` for in-memory storage
 - `SQLITE_DB_PATH` - Custom SQLite database path
+- `REPORT_STORAGE_DIR` - Where generated report PDFs are written (default: `./storage/reports`)
 
 ### Installation
 
@@ -113,6 +114,20 @@ Server starts at `http://localhost:3000` and connects to Supabase.
 | DELETE | `/tasks/:id`      | Delete a task                | 204, 404     |
 | GET    | `/stats`          | Task statistics              | 200          |
 | POST   | `/reset`          | Reset to seed tasks          | 200          |
+
+### Report Endpoints (Require Bearer Token)
+
+Task reports are generated as a background job: `POST /reports/tasks` enqueues the
+job and returns immediately; poll `GET /reports/:id` until it is `completed`, then
+stream the PDF from `GET /reports/:id/download`. PDFs are written to the local
+`storage/reports/` directory (`REPORT_STORAGE_DIR` to override) and streamed —
+the PDF bytes are never embedded in any JSON response.
+
+| Method | Path                      | Description                              | Status Codes |
+|--------|---------------------------|------------------------------------------|--------------|
+| POST   | `/reports/tasks`          | Enqueue a task-report job                | 202, 401     |
+| GET    | `/reports/:id`            | Report status + download URL (owner)     | 200, 400, 401, 404 |
+| GET    | `/reports/:id/download`   | Stream the PDF (owner, completed only)   | 200, 400, 401, 404 |
 
 ### System Endpoints
 

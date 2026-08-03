@@ -340,6 +340,76 @@
         }
       }
     },
+    "/reports/tasks": {
+      "post": {
+        "summary": "Request a task-report PDF (generated in the background)",
+        "tags": ["Reports"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "202": {
+            "description": "Report queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "reportId": { "type": "string", "format": "uuid" },
+                    "status": { "type": "string", "enum": ["pending"] }
+                  },
+                  "required": ["reportId", "status"]
+                }
+              }
+            }
+          },
+          "401": { "description": "Missing or invalid token" }
+        }
+      }
+    },
+    "/reports/{id}": {
+      "get": {
+        "summary": "Get the status of a report the requester owns",
+        "tags": ["Reports"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": {
+            "description": "Report status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+                    "downloadUrl": { "type": "string" }
+                  },
+                  "required": ["status"]
+                }
+              }
+            }
+          },
+          "400": { "description": "Malformed report id" },
+          "401": { "description": "Missing or invalid token" },
+          "404": { "description": "Report not found or not owned by the requester" }
+        }
+      }
+    },
+    "/reports/{id}/download": {
+      "get": {
+        "summary": "Stream the completed report PDF (owner only)",
+        "tags": ["Reports"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": {
+            "description": "PDF file",
+            "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "400": { "description": "Malformed report id" },
+          "401": { "description": "Missing or invalid token" },
+          "404": { "description": "Report not found, not owned, or not completed" }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "summary": "Health check",

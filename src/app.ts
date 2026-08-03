@@ -1,12 +1,13 @@
 import express, { Express } from "express";
 import swaggerUi from "swagger-ui-express";
+import { Router } from "express";
 import { TaskService } from "./services/task-service";
 import { createTaskRouter, taskErrorHandler } from "./routes/task-routes";
 import { createAuthRouter } from "./routes/auth-routes";
 import { createProtectedRouter } from "./routes/protected-routes";
 import openapiSpec from "../openapi.json";
 
-export function createApp(taskService: TaskService): Express {
+export function createApp(taskService: TaskService, reportRouter?: Router): Express {
   const app = express();
   app.use(express.json());
 
@@ -27,6 +28,9 @@ export function createApp(taskService: TaskService): Express {
   app.use(createAuthRouter());
   app.use(createProtectedRouter());
   app.use(createTaskRouter(taskService));
+  if (reportRouter) {
+    app.use(reportRouter);
+  }
   app.use(taskErrorHandler);
 
   return app;

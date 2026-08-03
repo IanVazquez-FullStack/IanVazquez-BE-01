@@ -121,4 +121,32 @@ export class PostgresTaskRepository implements TaskRepository {
     const done = rows[0].done as number;
     return { total, done, open: total - done };
   }
+
+  async reportMetrics(): Promise<{ total: number; completed: number; byStatus: { status: "done" | "open"; count: number }[] }> {
+    const totals = await this.pool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE done)::int AS completed
+       FROM tasks`
+    );
+    const total = totals.rows[0].total as number;
+    const completed = totals.rows[0].completed as number;
+
+    const byStatusRows = await this.pool.query(
+      `SELECT done, COUNT(*)::int AS count FROM tasks GROUP BY done`
+    );
+    const counts: Record<string, number> = { done: 0, open: 0 };
+    for (const row of byStatusRows.rows) {
+      counts[row.done ? "done" : "open"] = row.count as number;
+    }
+
+    return {
+      total,
+      completed,
+      byStatus: [
+        { status: "done", count: counts.done },
+        { status: "open", count: counts.open },
+      ],
+    };
+  }
 }
