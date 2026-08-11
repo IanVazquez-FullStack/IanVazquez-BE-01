@@ -1,11 +1,10 @@
 import fs from "fs";
 import path from "path";
-import OpenAI from "openai";
-import { getClient } from "./client";
+import { callLlm, ChatCompletionsApi, getClient } from "./client";
 import { loadPrompt, PROMPT_VERSION } from "./prompt";
 import { tryParseClassification } from "./parse";
 import { TaskClassification, taskClassificationSchema } from "./schema";
-import { ClassificationRejectedError } from "../services/errors";
+import { ClassificationRejectedError, UpstreamUnavailableError } from "../services/errors";
 
 const STUB_CLASSIFICATION: TaskClassification = taskClassificationSchema.parse({
   category: "feature",
@@ -15,25 +14,49 @@ const STUB_CLASSIFICATION: TaskClassification = taskClassificationSchema.parse({
   reason: "Stub mode: deterministic classification, no model call.",
 });
 
-type ChatClient = Pick<OpenAI, "chat">;
+interface CostLogEntry {
+  event: "llm_cost";
+  ts: string;
+  mode: "stub" | "live";
+  promptVersion: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  repairNeeded: boolean;
+  retries: number;
+}
 
 export class TaskClassifyService {
   constructor(
-    private readonly clientOverride?: ChatClient,
+    private readonly clientOverride?: ChatCompletionsApi,
     private readonly quarantineDir?: string
   ) {}
 
   async classify(description: string): Promise<TaskClassification> {
+    const startedAt = Date.now();
+    const model = process.env.LLM_MODEL || "openrouter/free";
+
+    if (process.env.LLM_ENABLED === "false") {
+      throw new UpstreamUnavailableError("LLM is disabled (LLM_ENABLED=false) — no model call made");
+    }
     if (process.env.LLM_STUB === "1") {
+      this.logCost({ mode: "stub", model, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - startedAt, repairNeeded: false, retries: 0 });
       return STUB_CLASSIFICATION;
     }
-    const model = process.env.LLM_MODEL || "openrouter/free";
-    const system = loadPrompt(PROMPT_VERSION);
 
-    const primary = await this.callModel(model, system, description);
+    const system = loadPrompt(PROMPT_VERSION);
+    const client = this.clientOverride ?? getClient();
+
+    const primary = await callLlm({ model, system, user: description, temperature: 0.1 }, client);
     let outcome = tryParseClassification(primary.text);
+    let repairNeeded = false;
+    let inputTokens = primary.inputTokens;
+    let outputTokens = primary.outputTokens;
+    let retries = primary.retries;
 
     if (!outcome.ok) {
+      repairNeeded = true;
       const repairMessage = [
         "Your previous response could not be validated. Reply with ONLY the corrected JSON object, following the system instructions exactly.",
         "",
@@ -41,10 +64,14 @@ export class TaskClassifyService {
         `Previous (invalid) response: ${primary.text}`,
         `Validation error: ${outcome.error}`,
       ].join("\n");
-      const repair = await this.callModel(model, system, repairMessage);
+      const repair = await callLlm({ model, system, user: repairMessage, temperature: 0.1 }, client);
+      inputTokens += repair.inputTokens;
+      outputTokens += repair.outputTokens;
+      retries += repair.retries;
       outcome = tryParseClassification(repair.text);
 
       if (!outcome.ok) {
+        this.logCost({ mode: "live", model, inputTokens, outputTokens, durationMs: Date.now() - startedAt, repairNeeded, retries });
         this.quarantine({
           promptVersion: PROMPT_VERSION,
           model,
@@ -57,24 +84,18 @@ export class TaskClassifyService {
       }
     }
 
+    this.logCost({ mode: "live", model, inputTokens, outputTokens, durationMs: Date.now() - startedAt, repairNeeded, retries });
     return outcome.value;
   }
 
-  private async callModel(
-    model: string,
-    system: string,
-    userContent: string
-  ): Promise<{ text: string }> {
-    const client = this.clientOverride ?? getClient();
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0.1,
-    });
-    return { text: response.choices[0]?.message?.content ?? "" };
+  private logCost(entry: Omit<CostLogEntry, "event" | "ts" | "promptVersion">): void {
+    const line: CostLogEntry = {
+      event: "llm_cost",
+      ts: new Date().toISOString(),
+      promptVersion: PROMPT_VERSION,
+      ...entry,
+    };
+    console.log(JSON.stringify(line));
   }
 
   private quarantine(entry: {

@@ -4,6 +4,7 @@ import path from "path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import OpenAI from "openai";
+import { APIConnectionTimeoutError, RateLimitError, BadRequestError } from "openai/error";
 import { createApp } from "../src/app";
 import { TaskService } from "../src/services/task-service";
 import { InMemoryTaskRepository } from "../src/repositories/in-memory-task-repository";
@@ -35,6 +36,29 @@ function fakeClient(responses: Array<string | ((params: { messages: { content: s
 
 function buildApp(service: TaskClassifyService) {
   return createApp(new TaskService(new InMemoryTaskRepository()), undefined, service);
+}
+
+function fakeClientWithCalls(
+  behaviors: Array<{ error?: Error; content?: string }>
+): { client: OpenAI; calls: string[] } {
+  const calls: string[] = [];
+  const client = {
+    chat: {
+      completions: {
+        create: async (params: { messages: { content: string }[] }) => {
+          const user = params.messages.find((m) => m.role === "user")!.content;
+          calls.push(user);
+          const behavior = behaviors[Math.min(calls.length - 1, behaviors.length - 1)];
+          if (behavior.error) throw behavior.error;
+          return {
+            choices: [{ index: 0, message: { role: "assistant", content: behavior.content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+      },
+    },
+  } as unknown as OpenAI;
+  return { client, calls };
 }
 
 describe("TaskClassifyService.extractJsonText", () => {
@@ -171,4 +195,83 @@ describe("POST /tasks/classify", () => {
     expect(res.status).toBe(422);
     expect(JSON.stringify(res.body)).not.toContain("garbage");
   });
+});
+
+describe("POST /tasks/classify — Stage 4 behavior", () => {
+  let quarantineDir: string;
+
+  beforeEach(() => {
+    process.env.LLM_STUB = "";
+    delete process.env.LLM_STUB;
+    process.env.LLM_ENABLED = "";
+    delete process.env.LLM_ENABLED;
+    quarantineDir = fs.mkdtempSync(path.join(os.tmpdir(), "classify-quarantine-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(quarantineDir, { recursive: true, force: true });
+  });
+
+  it("kill switch: LLM_ENABLED=false returns 503 without calling the model", async () => {
+    process.env.LLM_ENABLED = "false";
+    let called = false;
+    const client = {
+      chat: {
+        completions: {
+          create: async () => {
+            called = true;
+            throw new Error("should never be called");
+          },
+        },
+      },
+    } as unknown as OpenAI;
+    const app = buildApp(new TaskClassifyService(client, quarantineDir));
+    const res = await request(app)
+      .post("/tasks/classify")
+      .send({ description: "anything" });
+    expect(res.status).toBe(503);
+    expect(called).toBe(false);
+  });
+
+  it("retries on 429 honoring Retry-After, then succeeds", async () => {
+    const { client, calls } = fakeClientWithCalls([
+      { error: new RateLimitError(429, { message: "rate limited" }, { "retry-after": "0" }) },
+      { content: VALID_JSON },
+    ]);
+    const app = buildApp(new TaskClassifyService(client, quarantineDir));
+    const res = await request(app)
+      .post("/tasks/classify")
+      .send({ description: "Fix the login endpoint" });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toBe("Fix the login endpoint");
+    expect(calls[1]).toBe("Fix the login endpoint");
+  });
+
+  it("does not retry on 400 — fails fast with 503", async () => {
+    const { client, calls } = fakeClientWithCalls([
+      { error: new BadRequestError(400, { message: "bad request" }, "bad request", undefined) },
+    ]);
+    const app = buildApp(new TaskClassifyService(client, quarantineDir));
+    const res = await request(app)
+      .post("/tasks/classify")
+      .send({ description: "Fix the login endpoint" });
+    expect(res.status).toBe(503);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("returns 504 when the request times out through all retries", async () => {
+    const { client, calls } = fakeClientWithCalls([
+      { error: new APIConnectionTimeoutError({ message: "timed out" }) },
+      { error: new APIConnectionTimeoutError({ message: "timed out" }) },
+      { error: new APIConnectionTimeoutError({ message: "timed out" }) },
+      { error: new APIConnectionTimeoutError({ message: "timed out" }) },
+    ]);
+    const app = buildApp(new TaskClassifyService(client, quarantineDir));
+    const res = await request(app)
+      .post("/tasks/classify")
+      .send({ description: "Fix the login endpoint" });
+    expect(res.status).toBe(504);
+    expect(calls).toHaveLength(4);
+  }, 15000);
 });

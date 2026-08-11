@@ -25,3 +25,10 @@ export class ClassificationRejectedError extends Error {
     this.name = "ClassificationRejectedError";
   }
 }
+
+export class LLMTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LLMTimeoutError";
+  }
+}
