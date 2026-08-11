@@ -1,4 +1,5 @@
-import { UpstreamUnavailableError } from "../services/errors";
+import { getClient } from "./client";
+import { loadPrompt, PROMPT_VERSION } from "./prompt";
 import { TaskClassification, taskClassificationSchema } from "./schema";
 
 const STUB_CLASSIFICATION: TaskClassification = taskClassificationSchema.parse({
@@ -10,10 +11,20 @@ const STUB_CLASSIFICATION: TaskClassification = taskClassificationSchema.parse({
 });
 
 export class TaskClassifyService {
-  async classify(description: string): Promise<TaskClassification> {
+  async classify(description: string): Promise<unknown> {
     if (process.env.LLM_STUB === "1") {
       return STUB_CLASSIFICATION;
     }
-    throw new UpstreamUnavailableError("LLM call not wired yet (Stage 2)");
+    const client = getClient();
+    const model = process.env.LLM_MODEL || "openrouter/free";
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: loadPrompt(PROMPT_VERSION) },
+        { role: "user", content: description },
+      ],
+      temperature: 0.1,
+    });
+    return response.choices[0]?.message?.content ?? "";
   }
 }
