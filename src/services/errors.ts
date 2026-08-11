@@ -18,3 +18,10 @@ export class UpstreamUnavailableError extends Error {
     this.name = "UpstreamUnavailableError";
   }
 }
+
+export class ClassificationRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ClassificationRejectedError";
+  }
+}

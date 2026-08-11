@@ -1,0 +1,2 @@
+Quarantine log. Task-classification failures are appended here as JSON lines
+(logs/quarantine.jsonl, git-ignored — this file only keeps the directory tracked).

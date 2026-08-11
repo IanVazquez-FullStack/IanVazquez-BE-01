@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { TaskService } from "../services/task-service";
-import { NotFoundError, UpstreamUnavailableError, ValidationError } from "../services/errors";
+import { ClassificationRejectedError, NotFoundError, UpstreamUnavailableError, ValidationError } from "../services/errors";
 import { TaskClassifyService } from "../llm/classify-service";
 import { classifyRequestSchema, formatZodIssues } from "../llm/schema";
 
@@ -137,6 +137,10 @@ export function taskErrorHandler(
   }
   if (err instanceof UpstreamUnavailableError) {
     res.status(503).json({ error: err.message });
+    return;
+  }
+  if (err instanceof ClassificationRejectedError) {
+    res.status(422).json({ error: err.message });
     return;
   }
   console.error(err);
