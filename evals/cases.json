@@ -1,0 +1,101 @@
+{
+  "prompt_version": "classify-task-v1",
+  "cases": [
+    {
+      "id": "c01-bug-auth",
+      "description": "Login endpoint returns a 500 when the password is empty",
+      "expected": {
+        "category": "bug",
+        "priority": "high",
+        "suggested_team": "backend",
+        "confidence": 0.95,
+        "reason": "Crashing auth endpoint on a common input path."
+      },
+      "note": "clear bug on a backend-owned endpoint"
+    },
+    {
+      "id": "c02-feature-darkmode",
+      "description": "Add a dark mode toggle to the settings page",
+      "expected": {
+        "category": "feature",
+        "priority": "low",
+        "suggested_team": "frontend",
+        "confidence": 0.92,
+        "reason": "A new user-facing capability on the frontend."
+      },
+      "note": "new capability, frontend UI"
+    },
+    {
+      "id": "c03-chore-ci",
+      "description": "Upgrade the CI runner image to the latest LTS",
+      "expected": {
+        "category": "chore",
+        "priority": "low",
+        "suggested_team": "infra",
+        "confidence": 0.88,
+        "reason": "Maintenance with no user-visible behavior change."
+      },
+      "note": "maintenance task"
+    },
+    {
+      "id": "c04-research-vector",
+      "description": "Evaluate vector databases for semantic search over our task titles",
+      "expected": {
+        "category": "research",
+        "priority": "normal",
+        "suggested_team": "backend",
+        "confidence": 0.85,
+        "reason": "An exploration with no committed implementation yet."
+      },
+      "note": "exploration, not implementation"
+    },
+    {
+      "id": "c05-not-a-task",
+      "description": "Please contact the support team about the billing on my last invoice",
+      "expected": {
+        "category": "other",
+        "priority": "low",
+        "suggested_team": "unassigned",
+        "confidence": 0.9,
+        "reason": "Not a development task."
+      },
+      "note": "not a software task at all"
+    },
+    {
+      "id": "c06-ambiguous",
+      "description": "Do some stuff, I guess, whenever you have a chance",
+      "expected": {
+        "category": "other",
+        "priority": "low",
+        "suggested_team": "unassigned",
+        "confidence": 0.3,
+        "reason": "No actionable task is described."
+      },
+      "note": "ambiguous — must hit the when-unsure rule (other / unassigned / confidence < 0.5)"
+    },
+    {
+      "id": "c07-design-onboarding",
+      "description": "Redesign the onboarding flow with new illustrations and a friendlier copy",
+      "expected": {
+        "category": "feature",
+        "priority": "high",
+        "suggested_team": "design",
+        "confidence": 0.86,
+        "reason": "A user-facing redesign led by the design team."
+      },
+      "note": "design-led new feature"
+    },
+    {
+      "id": "c08-urgent-prod",
+      "description": "Production database is down and users cannot log in, restore service immediately",
+      "expected": {
+        "category": "bug",
+        "priority": "urgent",
+        "suggested_team": "infra",
+        "confidence": 0.97,
+        "reason": "Active production outage requiring immediate infrastructure action."
+      },
+      "note": "incident — urgent, infra"
+    }
+  ]
+}
