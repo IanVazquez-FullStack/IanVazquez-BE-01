@@ -14,6 +14,7 @@ import { ReportService } from "./services/report-service";
 import { PdfkitReportGenerator } from "./services/report-pdf-generator";
 import { InProcessReportJobQueue } from "./jobs/report-job-queue";
 import { createReportRouter } from "./routes/report-routes";
+import { TaskClassifyService } from "./llm/classify-service";
 import { createPool } from "./config/db";
 
 const port = process.env.PORT || 3000;
@@ -54,7 +55,7 @@ const reportService = new ReportService(
 const reportJobQueue = new InProcessReportJobQueue((reportId) => reportService.processReport(reportId));
 const reportRouter = createReportRouter(reportService, reportJobQueue);
 
-const app = createApp(taskService, reportRouter);
+const app = createApp(taskService, reportRouter, new TaskClassifyService());
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);

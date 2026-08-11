@@ -110,6 +110,7 @@ Server starts at `http://localhost:3000` and connects to Supabase.
 | GET    | `/tasks`          | List tasks                   | 200          |
 | GET    | `/tasks/:id`      | Get one task                 | 200, 404     |
 | POST   | `/tasks`          | Create a task                | 201, 400     |
+| POST   | `/tasks/classify` | Classify a task description via LLM | 200, 400, 422, 503, 504 |
 | PUT    | `/tasks/:id`      | Update a task                | 200, 400, 404|
 | DELETE | `/tasks/:id`      | Delete a task                | 204, 404     |
 | GET    | `/stats`          | Task statistics              | 200          |
@@ -138,6 +139,39 @@ the PDF bytes are never embedded in any JSON response.
 | GET    | `/docs`           | Swagger UI                   | 200          |
 
 ## Usage Examples
+
+### Classify a Task Description
+
+Valid request — returns the closed-schema classification:
+
+```bash
+curl -s -X POST http://localhost:3000/tasks/classify \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Fix the login endpoint returning 500 on invalid passwords"}'
+```
+
+```json
+{
+  "category": "bug",
+  "priority": "high",
+  "suggested_team": "backend",
+  "confidence": 0.92,
+  "reason": "A crashing authentication endpoint is a bug that needs the backend team."
+}
+```
+
+Deliberately invalid request — missing `description` returns a 400 naming the field:
+
+```bash
+curl -s -i -X POST http://localhost:3000/tasks/classify \
+  -H "Content-Type: application/json" \
+  -d '{"description":""}'
+```
+
+```text
+HTTP/1.1 400 Bad Request
+{"error":"'description' must not be empty"}
+```
 
 ### Sign Up
 

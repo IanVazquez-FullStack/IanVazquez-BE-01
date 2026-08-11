@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { TaskService } from "../services/task-service";
-import { NotFoundError, ValidationError } from "../services/errors";
+import { NotFoundError, UpstreamUnavailableError, ValidationError } from "../services/errors";
+import { TaskClassifyService } from "../llm/classify-service";
+import { classifyRequestSchema, formatZodIssues } from "../llm/schema";
 
 function parseId(raw: string): number {
   const id = Number(raw);
@@ -21,7 +23,7 @@ function parseSortQuery(raw: unknown): "title" | undefined {
   throw new ValidationError("'sort' query param must be 'title'");
 }
 
-export function createTaskRouter(taskService: TaskService): Router {
+export function createTaskRouter(taskService: TaskService, taskClassifier?: TaskClassifyService): Router {
   const router = Router();
 
   router.get("/tasks", async (req: Request, res: Response, next: NextFunction) => {
@@ -53,6 +55,24 @@ export function createTaskRouter(taskService: TaskService): Router {
     try {
       const task = await taskService.createTask(req.body?.title);
       res.status(201).json(task);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/tasks/classify", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!taskClassifier) {
+        throw new UpstreamUnavailableError("LLM classifier is not configured");
+      }
+      const raw =
+        req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+      const input = classifyRequestSchema.safeParse(raw);
+      if (!input.success) {
+        throw new ValidationError(formatZodIssues(input.error, "description"));
+      }
+      const classification = await taskClassifier.classify(input.data.description);
+      res.status(200).json(classification);
     } catch (err) {
       next(err);
     }
@@ -113,6 +133,10 @@ export function taskErrorHandler(
   }
   if (err instanceof NotFoundError) {
     res.status(404).json({ error: err.message });
+    return;
+  }
+  if (err instanceof UpstreamUnavailableError) {
+    res.status(503).json({ error: err.message });
     return;
   }
   console.error(err);
