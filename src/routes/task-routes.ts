@@ -3,6 +3,15 @@ import { TaskService } from "../services/task-service";
 import { ClassificationRejectedError, LLMTimeoutError, NotFoundError, UpstreamUnavailableError, ValidationError } from "../services/errors";
 import { TaskClassifyService } from "../llm/classify-service";
 import { classifyRequestSchema, formatZodIssues } from "../llm/schema";
+import { ClassifyQueue } from "../jobs/classify-queue";
+import { JobRepository } from "../repositories/job-repository";
+import { classifyIdempotencyKey, CLASSIFY_OPERATION } from "../models/job";
+
+/** Minimal surface the async classify route needs, so tests can stub it. */
+export interface ClassifyJobDeps {
+  queue: Pick<ClassifyQueue, "enqueue" | "remove">;
+  jobRepository: JobRepository;
+}
 
 function parseId(raw: string): number {
   const id = Number(raw);
@@ -23,7 +32,11 @@ function parseSortQuery(raw: unknown): "title" | undefined {
   throw new ValidationError("'sort' query param must be 'title'");
 }
 
-export function createTaskRouter(taskService: TaskService, taskClassifier?: TaskClassifyService): Router {
+export function createTaskRouter(
+  taskService: TaskService,
+  taskClassifier?: TaskClassifyService,
+  classifyJobDeps?: ClassifyJobDeps
+): Router {
   const router = Router();
 
   router.get("/tasks", async (req: Request, res: Response, next: NextFunction) => {
@@ -73,6 +86,65 @@ export function createTaskRouter(taskService: TaskService, taskClassifier?: Task
       }
       const classification = await taskClassifier.classify(input.data.description);
       res.status(200).json(classification);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Async variant: no LLM call happens in this request. The route validates,
+  // claims an idempotency key, enqueues to Redis and returns 202 immediately.
+  // The worker (src/worker.ts) performs the actual classification.
+  router.post("/tasks/:id/classify", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!classifyJobDeps) {
+        throw new UpstreamUnavailableError("Background job queue is not configured");
+      }
+      const taskId = parseId(req.params.id);
+      await taskService.getTask(taskId);
+
+      const raw =
+        req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+      const input = classifyRequestSchema.safeParse(raw);
+      if (!input.success) {
+        throw new ValidationError(formatZodIssues(input.error, "description"));
+      }
+      const description = input.data.description;
+
+      const key = classifyIdempotencyKey(taskId);
+      const { job, created } = await classifyJobDeps.jobRepository.createOrGet(key, {
+        taskId,
+        operation: CLASSIFY_OPERATION,
+      });
+
+      if (!created) {
+        if (job.status !== "failed") {
+          return res.status(202).json({
+            job_id: job.id,
+            status: job.status,
+            status_url: `/jobs/${job.id}`,
+            duplicate: true,
+          });
+        }
+        // The previous attempt failed terminally — reset the row and retry.
+        await classifyJobDeps.jobRepository.resetForRetry(key);
+        await classifyJobDeps.queue.remove(key).catch(() => 0);
+      }
+
+      try {
+        await classifyJobDeps.queue.enqueue({ taskId, description, idempotencyKey: key });
+      } catch (err) {
+        await classifyJobDeps.jobRepository.markFailed(
+          key,
+          `enqueue failed: ${err instanceof Error ? err.message : String(err)}`
+        ).catch(() => undefined);
+        throw err;
+      }
+
+      res.status(202).json({
+        job_id: job.id,
+        status: "queued",
+        status_url: `/jobs/${job.id}`,
+      });
     } catch (err) {
       next(err);
     }

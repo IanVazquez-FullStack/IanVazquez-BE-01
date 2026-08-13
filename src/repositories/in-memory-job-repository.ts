@@ -16,9 +16,9 @@ export class InMemoryJobRepository implements JobRepository {
   async createOrGet(
     key: string,
     input: { taskId: number; operation: string }
-  ): Promise<JobRecord> {
+  ): Promise<{ job: JobRecord; created: boolean }> {
     const existing = this.byKey.get(key);
-    if (existing) return existing;
+    if (existing) return { job: existing, created: false };
     const now = new Date().toISOString();
     const record: JobRecord = {
       id: randomUUID(),
@@ -34,7 +34,7 @@ export class InMemoryJobRepository implements JobRepository {
     };
     this.byKey.set(key, record);
     this.byId.set(record.id, record);
-    return record;
+    return { job: record, created: true };
   }
 
   async findByKey(key: string): Promise<JobRecord | null> {

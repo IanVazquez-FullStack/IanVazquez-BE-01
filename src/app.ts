@@ -6,12 +6,14 @@ import { createTaskRouter, taskErrorHandler } from "./routes/task-routes";
 import { createAuthRouter } from "./routes/auth-routes";
 import { createProtectedRouter } from "./routes/protected-routes";
 import { TaskClassifyService } from "./llm/classify-service";
+import { ClassifyJobDeps } from "./routes/task-routes";
 import openapiSpec from "../openapi.json";
 
 export function createApp(
   taskService: TaskService,
   reportRouter?: Router,
-  taskClassifier?: TaskClassifyService
+  taskClassifier?: TaskClassifyService,
+  classifyJobDeps?: ClassifyJobDeps
 ): Express {
   const app = express();
   app.use(express.json());
@@ -20,7 +22,7 @@ export function createApp(
     res.status(200).json({
       name: "Task API",
       version: "2.0",
-      endpoints: ["/tasks", "/tasks/classify", "/tasks/:id", "/stats", "/reset", "/api/health", "/docs", "/auth/signup", "/auth/login", "/auth/logout", "/public/info", "/protected/profile", "/protected/dashboard"],
+      endpoints: ["/tasks", "/tasks/classify", "/tasks/:id/classify", "/tasks/:id", "/jobs/:id", "/stats", "/reset", "/api/health", "/docs", "/auth/signup", "/auth/login", "/auth/logout", "/public/info", "/protected/profile", "/protected/dashboard"],
     });
   });
 
@@ -32,7 +34,7 @@ export function createApp(
 
   app.use(createAuthRouter());
   app.use(createProtectedRouter());
-  app.use(createTaskRouter(taskService, taskClassifier));
+  app.use(createTaskRouter(taskService, taskClassifier, classifyJobDeps));
   if (reportRouter) {
     app.use(reportRouter);
   }

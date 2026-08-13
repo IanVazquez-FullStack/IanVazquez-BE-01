@@ -61,7 +61,7 @@ export class PostgresJobRepository implements JobRepository {
   async createOrGet(
     key: string,
     input: { taskId: number; operation: string }
-  ): Promise<JobRecord> {
+  ): Promise<{ job: JobRecord; created: boolean }> {
     const now = new Date().toISOString();
     const { rows } = await this.pool.query<JobRow>(
       `INSERT INTO jobs (id, idempotency_key, task_id, operation, status, attempts, result, error, created_at, updated_at)
@@ -70,12 +70,12 @@ export class PostgresJobRepository implements JobRepository {
        RETURNING ${COLUMNS}`,
       [randomUUID(), key, input.taskId, input.operation, now]
     );
-    if (rows[0]) return toJob(rows[0]);
+    if (rows[0]) return { job: toJob(rows[0]), created: true };
     const existing = await this.findByKey(key);
     if (!existing) {
       throw new Error(`job row vanished between insert and select for key ${key}`);
     }
-    return existing;
+    return { job: existing, created: false };
   }
 
   async findByKey(key: string): Promise<JobRecord | null> {

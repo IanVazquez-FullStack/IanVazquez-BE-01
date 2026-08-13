@@ -106,7 +106,7 @@ export class SqliteJobRepository implements JobRepository {
   async createOrGet(
     key: string,
     input: { taskId: number; operation: string }
-  ): Promise<JobRecord> {
+  ): Promise<{ job: JobRecord; created: boolean }> {
     const now = new Date().toISOString();
     const insert = this.db
       .prepare(
@@ -116,13 +116,15 @@ export class SqliteJobRepository implements JobRepository {
       )
       .run(randomUUID(), key, input.taskId, input.operation, now, now);
     if (insert.changes === 1) {
-      return (await this.findByKey(key)) as JobRecord;
+      const job = await this.findByKey(key);
+      if (!job) throw new Error(`job row vanished after insert for key ${key}`);
+      return { job, created: true };
     }
     const existing = await this.findByKey(key);
     if (!existing) {
       throw new Error(`job row vanished between insert and select for key ${key}`);
     }
-    return existing;
+    return { job: existing, created: false };
   }
 
   async findByKey(key: string): Promise<JobRecord | null> {

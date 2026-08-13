@@ -9,13 +9,15 @@ import { JobRecord } from "../models/job";
  * idempotency key (INSERT ... ON CONFLICT DO NOTHING in Postgres) so two
  * concurrent enqueues of the same task+operation can only ever produce one
  * job row. The unique constraint on the key is the DB layer's second line of
- * defense behind BullMQ's job-ID dedupe.
+ * defense behind BullMQ's job-ID dedupe. `created` tells the caller whether it
+ * won the claim (and must enqueue in Redis) or lost it (and must return the
+ * existing row without enqueueing).
  */
 export interface JobRepository {
   createOrGet(
     key: string,
     input: { taskId: number; operation: string }
-  ): Promise<JobRecord>;
+  ): Promise<{ job: JobRecord; created: boolean }>;
   findByKey(key: string): Promise<JobRecord | null>;
   findById(id: string): Promise<JobRecord | null>;
   markProcessing(key: string, attempt: number): Promise<void>;
